@@ -1,0 +1,36 @@
+{
+  "name": "tmswp/testing",
+  "description": "TMStack WordPress Framework - Testing support",
+  "type": "library",
+  "license": "GPL-2.0-or-later",
+  "require": {
+    "php": ">=8.3",
+    "brain/monkey": "^2.6",
+    "mockery/mockery": "^1.6",
+    "phpunit/phpunit": "^11.5",
+    "psr/log": "^3.0",
+    "tmswp/core": "^0.9"
+  },
+  "autoload": {
+    "psr-4": {
+      "TMSWP\\Testing\\": "src/"
+    }
+  },
+  "autoload-dev": {
+    "psr-4": {
+      "TMSWP\\Testing\\Tests\\": "tests/"
+    }
+  },
+  "scripts": {
+    "test": "phpunit"
+  },
+  "extra": {
+    "branch-alias": {
+      "dev-main": "0.9.x-dev"
+    }
+  },
+  "minimum-stability": "stable",
+  "config": {
+    "sort-packages": true
+  }
+}
