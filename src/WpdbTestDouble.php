@@ -44,7 +44,7 @@ if (!class_exists(wpdb::class, false)) {
  * 実wpdbのflush()と同じくrows_affectedを0に、last_errorを空にする(読み取り・DDL・失敗の後のrows_affectedは0)。
  * insert_idは、INSERT・REPLACEが行を作れば新しいID、行を作らなければ(0件・失敗)0にし、ほかの操作では変えない。
  *
- * query()が対応する形は次の4つだけ。
+ * query()が対応する形は次の5つだけ。
  * 1. JtiStoreの獲得(INSERT IGNORE)・解放(option_name = %sのDELETE)・掃除(LIKEと期限のDELETE)。直前のprepare()に
  *    JtiStoreと同じSQLを渡し、その戻り値を実行したときだけ、この形とみなす。獲得済みのoption_nameと値を`%i`の
  *    テーブルごとに覚え、実wpdbと同じ件数を返す。テーブルはwp_optionsと同じ構造(AUTO_INCREMENTのoption_id、
@@ -62,8 +62,17 @@ if (!class_exists(wpdb::class, false)) {
  *    SQLのコメント(`/*`・`--`・`#`)が含まれていれば、形を判定せずに例外にする。
  * 3. INSERT・UPDATE・DELETE・REPLACE。代役は行を持たないため、queueAffectedRows()で入れた、影響した行の数を返す。
  *    行を作ったINSERT・REPLACEのinsert_idは、queueInsertId()で入れたIDにする(AUTO_INCREMENTの列の無いテーブル
- *    では0を入れる)。入れていなければ例外にする。
- * 4. failNextWrite()を予約した呼び出し。形に関係なくfalseを返す。
+ *    では0を入れる)。入れていなければ例外にする。upsert(INSERT … ON DUPLICATE KEY UPDATE)もINSERTとして扱う。
+ *    実wpdbと同じく、影響した行の数が1(挿入)なら新しいID、2(更新)なら更新した行のIDを入れ、0(変化なし)なら
+ *    insert_idを0にして入れたIDを使わない。
+ * 4. トランザクションの制御。`START TRANSACTION`・`COMMIT`・`ROLLBACK`と`SET SESSION innodb_lock_wait_timeout = N`
+ *    (Nは10進の数字)を受け付け、実wpdbと同じく0を返す。トランザクションの実行中かどうかを状態に持ち(inTransaction()
+ *    で確かめる)、実行中の`START TRANSACTION`は例外にする(実物は暗黙にコミットして新しいトランザクションを始めるが、
+ *    代役はそれを再現しない)。`COMMIT`・`ROLLBACK`は、実行中でなくても受け付ける(実物と同じ)。ロック待ちの秒数は
+ *    状態に持ち(既定は実物の既定値と同じ'50')、get_var('SELECT @@SESSION.innodb_lock_wait_timeout')でその値を返す。
+ *    行は持たないため、ロールバックで書き込みが取り消されること、ロックの競合・デッドロック・ロック待ちの時間切れは
+ *    再現しない。
+ * 5. failNextWrite()を予約した呼び出し。形に関係なくfalseを返す。
  * SELECT等、ほかの形は例外にする。update()・delete()も、queueAffectedRows()で入れた数を返す(MySQLが実際に変えた
  * 行の数で、同じ値への更新は0)。insert()は1行を挿入するため、実wpdbと同じく1を返し、insert_idは
  * queueInsertId()で入れたIDにする。
@@ -72,7 +81,8 @@ if (!class_exists(wpdb::class, false)) {
  * OBJECT_K(1列目の値をキーにする)・ARRAY_A・ARRAY_Nだけを受け付ける。get_row()はOBJECT・ARRAY_A・ARRAY_Nと
  * 先頭の行だけを、get_var()は先頭の行の先頭の列だけを受け付ける(ほかの位置は例外)。get_var()は、実wpdbと同じく
  * 空文字をnullで返す。JtiStore::isClaimed()の形(直前のprepare()の戻り値)なら、キューではなく、そのテーブルの
- * 獲得済みの状態から値を返す。
+ * 獲得済みの状態から値を返す。`SELECT @@SESSION.innodb_lock_wait_timeout`なら、キューではなく、ロック待ちの秒数の
+ * 状態から値を返す。
  *
  * failNextWrite() で、書き込み系の呼び出しを実 wpdb の失敗と同じく false で返させられる。
  * failNextRead()で、読み取り系の呼び出しを実wpdbの失敗と同じくlast_errorを残して失敗させられる(get_row()・
@@ -167,6 +177,12 @@ final class WpdbTestDouble extends wpdb
 
     private ?string $tmswpPlaceholderEscape = null;
 
+    /** START TRANSACTIONの後、COMMIT・ROLLBACKの前か */
+    private bool $tmswpInTransaction = false;
+
+    /** SET SESSION innodb_lock_wait_timeoutで入れた秒数(実物の既定値は50) */
+    private string $tmswpLockWaitTimeout = '50';
+
     public static function create(): self
     {
         $reflection = new ReflectionClass(self::class);
@@ -257,7 +273,8 @@ final class WpdbTestDouble extends wpdb
     /**
      * 次に行を作るINSERT・REPLACE(insert()と、query()で実行して1行以上を作るもの)のinsert_idを入れる。新しいIDか、
      * AUTO_INCREMENTの列の無いテーブルなら0になるかを代役は決められないため、テストが入れる。入れずに行を作ると
-     * 例外になる。0件や失敗のINSERT・REPLACEは、実wpdbと同じくinsert_idを0にし、入れたIDを使わない。
+     * 例外になる。0件や失敗のINSERT・REPLACEは、実wpdbと同じくinsert_idを0にし、入れたIDを使わない。upsertが
+     * 既にある行を更新した場合(影響した行の数が2)は、実wpdbと同じく更新した行のIDを入れる。
      */
     public function queueInsertId(int $id): void
     {
@@ -266,6 +283,12 @@ final class WpdbTestDouble extends wpdb
         }
 
         $this->tmswpInsertIds[] = $id;
+    }
+
+    /** query()で実行した`START TRANSACTION`の後、`COMMIT`・`ROLLBACK`の前か。 */
+    public function inTransaction(): bool
+    {
+        return $this->tmswpInTransaction;
     }
 
     /** @return list<string> */
@@ -608,8 +631,11 @@ final class WpdbTestDouble extends wpdb
             return null;
         }
 
-        // JtiStore::isClaimed(): キューではなく、獲得・解放・掃除と同じ獲得済みの状態から答える
-        if ($query === $this->tmswpLastPrepared && $this->tmswpLastQuery === self::JTI_READ_SQL) {
+        if (preg_match('/^\s*select\s+@@session\.innodb_lock_wait_timeout\s*$/i', $query) === 1) {
+            // ロック待ちの秒数: キューではなく、SET SESSIONで入れた状態から答える
+            $value = $this->tmswpLockWaitTimeout;
+        } elseif ($query === $this->tmswpLastPrepared && $this->tmswpLastQuery === self::JTI_READ_SQL) {
+            // JtiStore::isClaimed(): キューではなく、獲得・解放・掃除と同じ獲得済みの状態から答える
             [$table, $name] = $this->jtiTableAndName('lookup');
             $key = $this->claimedJtiKey($table, $name);
             $value = $key === null ? null : $this->tmswpClaimedJtis[$table][$key];
@@ -652,11 +678,13 @@ final class WpdbTestDouble extends wpdb
             $template === self::JTI_CLAIM_SQL => $this->claimJti(),
             $template === self::JTI_RELEASE_SQL => $this->releaseJti(),
             $template === self::JTI_GARBAGE_COLLECTION_SQL => $this->collectJtiGarbage(),
+            preg_match('/^\s*(start\s+transaction|commit|rollback)\s*$/i', $sql) === 1 => $this->transactionControl($sql),
+            preg_match('/^\s*set\s+session\s+innodb_lock_wait_timeout\s*=\s*([0-9]+)\s*$/i', $sql, $timeout) === 1 => $this->setLockWaitTimeout($timeout[1]),
             preg_match('/^\s*(create|alter|truncate|drop)\s/i', $sql) === 1 => $this->ddl($sql),
             preg_match('/^\s*insert\s+ignore\s/i', $sql) === 1,
             preg_match('/^\s*delete\s/i', $sql) === 1 && str_contains($sql, 'option_name') => throw new InvalidArgumentException("WpdbTestDouble emulates INSERT IGNORE and DELETE of option_name only in the forms of JtiStore prepared with prepare(): {$sql}"),
             preg_match('/^\s*(insert|delete|update|replace)\s/i', $sql) === 1 => $this->writeQuery($sql),
-            default => throw new InvalidArgumentException("WpdbTestDouble does not emulate the query: {$sql}; it emulates DDL, INSERT, UPDATE, DELETE, REPLACE and the queries of JtiStore"),
+            default => throw new InvalidArgumentException("WpdbTestDouble does not emulate the query: {$sql}; it emulates DDL, INSERT, UPDATE, DELETE, REPLACE, START TRANSACTION, COMMIT, ROLLBACK, SET SESSION innodb_lock_wait_timeout and the queries of JtiStore"),
         };
     }
 
@@ -945,6 +973,36 @@ final class WpdbTestDouble extends wpdb
         unset($this->tmswpClaimedJtis[$name]);
 
         return true;
+    }
+
+    /**
+     * `START TRANSACTION`・`COMMIT`・`ROLLBACK`。実wpdbと同じく0を返す。
+     *
+     * @throws InvalidArgumentException トランザクションの実行中のSTART TRANSACTION
+     */
+    private function transactionControl(string $sql): int
+    {
+        if (preg_match('/^\s*start\s/i', $sql) === 1) {
+            if ($this->tmswpInTransaction) {
+                throw new InvalidArgumentException("WpdbTestDouble does not emulate the query: {$sql}; START TRANSACTION inside a transaction implicitly commits it");
+            }
+
+            $this->tmswpInTransaction = true;
+
+            return 0;
+        }
+
+        $this->tmswpInTransaction = false;
+
+        return 0;
+    }
+
+    /** `SET SESSION innodb_lock_wait_timeout = N`。秒数を状態に持ち、実wpdbと同じく0を返す。 */
+    private function setLockWaitTimeout(string $seconds): int
+    {
+        $this->tmswpLockWaitTimeout = $seconds;
+
+        return 0;
     }
 
     private static function isInsertOrReplace(string $sql): bool
