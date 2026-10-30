@@ -5,7 +5,7 @@ TMStack WordPress Framework(TMSWP)のパッケージと、TMSWPを使うテー�
 ## 動作環境
 
 - PHP 8.3〜8.5
-- tmswp/core `^0.9`(composer.jsonの`require`)
+- tmswp/core `^0.9.1`(composer.jsonの`require`)
 - PHPUnit `^11.5`・Brain Monkey `^2.6`・Mockery `^1.6`・psr/log `^3.0`を依存として持ちます。
 
 ## 導入
@@ -71,7 +71,7 @@ final class NewsletterOptionTest extends UnitTestCase
 - ユニットテストを書く(PHPUnitの設定・bootstrap・Brain Monkey・Kernelをbootするテスト)と、MySQLでMigratorを使う統合テスト(`RealTables`): `vendor/tmswp/testing/rules/testing.md`
 - オプション・メタのテスト: `vendor/tmswp/core/rules/options.md`・`vendor/tmswp/core/rules/meta.md`の「テスト」
 
-テストの層の設計は、TMSWPのmonorepo([tmstack-io/tmswp](https://github.com/tmstack-io/tmswp))の`docs/10-quality.md`の§4にあります。
+テストの層の設計は、TMSWPのmonorepo([tmstack-io/tmswp](https://github.com/tmstack-io/tmswp))の[docs/10-quality.md](https://github.com/tmstack-io/tmswp/blob/v0.9.1/docs/10-quality.md)の「テスト構成(PHPUnit 2 層)」の節にあります。
 
 ## 開発
 

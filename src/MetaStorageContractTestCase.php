@@ -7,7 +7,7 @@ namespace TMSWP\Testing;
 use TMSWP\Core\Exception\RuntimeException;
 
 /**
- * WordPressのデータベース($wpdb)に保存するMetaStorageInterfaceの実装の契約(docs/04 §4.5)を確かめる抽象テストケース。
+ * WordPressのデータベース($wpdb)に保存するMetaStorageInterfaceの実装の契約を確かめる抽象テストケース。
  *
  * データベースに依存しない契約はMetaStorageContractから受け継ぎ、ここではデータベースのエラーの契約を加える。
  * 実装ごとに、このクラスを継承した具体的なテストクラスを置き、storage()・objectType()・createObject()を実装する。

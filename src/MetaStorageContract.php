@@ -10,7 +10,7 @@ use TMSWP\Core\Meta\ObjectType;
 use TMSWP\Core\Meta\ValueCaster;
 
 /**
- * MetaStorageInterfaceの実装が満たす契約(docs/04 §4.5)のうち、データベースに依存しない部分を確かめるテスト。
+ * MetaStorageInterfaceの実装が満たす契約のうち、データベースに依存しない部分を確かめるテスト。
  *
  * 実装ごとのテストクラスがuseし、storage()・objectType()・createObject()を実装する。WordPressのデータベースに
  * 保存する実装は、データベースのエラーの契約も確かめるMetaStorageContractTestCase(統合テスト)を継承する。

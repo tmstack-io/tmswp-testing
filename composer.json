@@ -9,7 +9,7 @@
     "mockery/mockery": "^1.6",
     "phpunit/phpunit": "^11.5",
     "psr/log": "^3.0",
-    "tmswp/core": "^0.9"
+    "tmswp/core": "^0.9.1"
   },
   "autoload": {
     "psr-4": {

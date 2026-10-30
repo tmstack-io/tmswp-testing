@@ -503,19 +503,20 @@ final class WpdbTestDoubleParityTest extends IntegrationTestCase
             self::assertTrue($db->query($create($table)));
         }
 
-        $run = static function (string $label, string $sql) use ($db, $tables, $name, &$results): void {
+        $lookup = static function (string $table) use ($db, $name): ?string {
+            $sql = $db->prepare('SELECT option_value FROM %i WHERE option_name = %s', $table, $name);
+            self::assertIsString($sql);
+
+            return $db->get_var($sql);
+        };
+        // 2つのテーブルの読み取りは、foreachで集めず要素ごとに書く。PHPStan 2.3は、クロージャの中のforeachで集めた
+        // 配列を参照で受け取る$resultsに足すと、その配列を要素が1つの配列と推論するため
+        $run = static function (string $label, string $sql) use ($db, $tables, $lookup, &$results): void {
             $result = $db->query($sql);
             $rowsAffected = (int) $db->rows_affected;
             $insertId = str_starts_with($label, 'claim') ? ((int) $db->insert_id > 0 ? 'positive' : (int) $db->insert_id) : null;
-            $lookups = [];
 
-            foreach ($tables as $table) {
-                $lookup = $db->prepare('SELECT option_value FROM %i WHERE option_name = %s', $table, $name);
-                self::assertIsString($lookup);
-                $lookups[] = $db->get_var($lookup);
-            }
-
-            $results[] = [$label, $result, $rowsAffected, $insertId, $lookups];
+            $results[] = [$label, $result, $rowsAffected, $insertId, [$lookup($tables['a']), $lookup($tables['b'])]];
         };
         $claim = static function (string $table, string $claimed = 'tmswp_parity_jti_same') use ($db): string {
             $sql = $db->prepare("INSERT IGNORE INTO %i (option_name, option_value, autoload) VALUES (%s, %s, 'off')", $table, $claimed, '1999999990');

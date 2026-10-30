@@ -43,7 +43,7 @@
 </phpunit>
 ```
 
-`tests/bootstrap.php`(Composerのオートローダを読むだけにする。WordPressの定数・関数を定義しない):
+`tests/bootstrap.php`(Composerのオートローダを読み、`WP_CONTENT_DIR`だけを一時ディレクトリの下に定義する。ほかのWordPressの定数・関数は定義しない):
 
 ```php
 <?php
@@ -51,6 +51,11 @@
 declare(strict_types=1);
 
 require __DIR__ . '/../vendor/autoload.php';
+
+// WordPressが起動時に定義するWP_CONTENT_DIRを、ユニットテストではシステムの一時ディレクトリの下の、プロジェクトごとの
+// ディレクトリにする。tmswp-kernel.phpのSimpleLoggerは、出力先を省くとWP_CONTENT_DIRの下(tmswp-logs/)に書くため、
+// この定数が無いと、ユニットテストでlogChannelsのクロージャを呼べない。app/のコードからこの定数を直接読まない
+define('WP_CONTENT_DIR', sys_get_temp_dir() . '/tmswp-unit-tests/' . md5(dirname(__DIR__)) . '/wp-content');
 ```
 
 `composer.json`の`autoload-dev`(`App`はプロジェクトの名前空間):
@@ -271,7 +276,8 @@ final class ContactMigrationTest extends WP_UnitTestCase
 ## してはいけないこと
 
 - `PHPUnit\Framework\TestCase`を直接継承して、Brain Monkeyの`setUp()`・`tearDown()`を書き写さない。`UnitTestCase`を継承する。
-- `tests/bootstrap.php`で、`ABSPATH`等のWordPressの定数や、WordPressの関数・クラスを定義しない。テストごとにBrain Monkeyで差し替える(wpdbの出力の形の定数は、上の`WpdbTestDouble::defineOutputConstants()`を別のプロセスのテストで呼ぶ)。
+- `tests/bootstrap.php`で、`ABSPATH`等のWordPressの定数や、WordPressの関数・クラスを定義しない。テストごとにBrain Monkeyで差し替える(wpdbの出力の形の定数は、上の`WpdbTestDouble::defineOutputConstants()`を別のプロセスのテストで呼ぶ)。例外は`WP_CONTENT_DIR`だけである。`tmswp-kernel.php`の`SimpleLogger`は、出力先を省くと`WP_CONTENT_DIR`の下(`tmswp-logs/`)に書くため、ユニットテストで`tmswp-kernel.php`を`KernelConfig::load()`で読んだ構成の`logChannels`を呼ぶには、この定数で既定の出力先を決める必要がある。上の完全な実装例のとおり、一時ディレクトリの下のプロジェクトごとのディレクトリにする。
+- `app/`のコードから`WP_CONTENT_DIR`を直接読まない。`tests/bootstrap.php`が定義するため、`app/`のコードがこの定数を読んでも、ユニットテストでは失敗せず、本番と違う一時ディレクトリの値で動く(WordPressの外で定数が無いことを、ユニットテストで検出できない)。WordPressのディレクトリが要るときは、`wp_upload_dir()`等のWordPressの関数で得て、テストではBrain Monkeyで差し替える。
 - `app/`のコードから`TMSWP\Testing\`のクラスを使わない。tmswp/testingを`require`(本番の依存)に入れない。
 - Kernelをbootしたテストで、`tearDown()`の`Kernel::reset()`を省かない(次のテストのbootが、同じ名前空間のKernelの二重のbootとして失敗する)。
 - `MetaBag`を直接`new`しない。テストでも`::meta($object)`で取得する。

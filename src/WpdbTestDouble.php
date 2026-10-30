@@ -182,7 +182,7 @@ final class WpdbTestDouble extends wpdb
     /**
      * wpdb の出力形式定数を定義する（実 WordPress では wp-includes/class-wpdb.php が定義する）。
      *
-     * ユニット層では WP 定数を定義しない（docs/10 §4.4）。ただし wpdb 境界そのものである
+     * ユニット層では WP 定数を定義しない。ただし wpdb 境界そのものである
      * Connection::select()/selectRow() は ARRAY_A を参照するため、それを通すテストに限ってこの定数が要る。
      * 定数は取り消せずプロセス全体に漏れるので、呼び出すテストは必ず #[RunInSeparateProcess] で分離する。
      * 分離されずに二度定義されると define() の警告で失敗する（failOnWarning）。
